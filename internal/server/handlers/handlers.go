@@ -6,8 +6,9 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-	"strings"
 	"test-case/internal/models"
+	"test-case/internal/utils/logger"
+	"test-case/internal/utils/paginates"
 	"test-case/storage/repos"
 
 	"github.com/gin-gonic/gin"
@@ -38,6 +39,7 @@ func NewSongHandler(repos repos.SongRepository) SongHandler {
 // @Failure 404 {object} gin.H "Song doesn't exist"
 // @Router /get-songs [get]
 func (h *SongHandler) GetSongs(c *gin.Context) {
+	const op = "handlers.GetSongs"
 	queryParams := c.Request.URL.Query()
 
 	filterParams := make(map[string]string)
@@ -48,17 +50,20 @@ func (h *SongHandler) GetSongs(c *gin.Context) {
 		}
 	}
 
+	logger.Logger.Debug().Interface("Recieved params: ", filterParams).Msg(op)
+
 	result, err := h.repo.GetSongs(filterParams, c.Query("page"), c.Query("limit"))
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(404, gin.H{"Error": "Song doesnt exist"})
+			c.JSON(http.StatusNotFound, gin.H{"Error": "Song doesnt exist"})
 			return
 		}
-		c.JSON(400, gin.H{"Error": err.Error()})
+		logger.Logger.Info().Interface("Error occured: ", err.Error()).Msg(op)
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
 		return
 	}
 
-	c.JSON(200, result)
+	c.JSON(http.StatusOK, result)
 }
 
 // GetSongText godoc
@@ -76,32 +81,34 @@ func (h *SongHandler) GetSongs(c *gin.Context) {
 // @Failure 404 {object} gin.H "Song doesn't exist"
 // @Router /get-song-text [get]
 func (h *SongHandler) GetSongText(c *gin.Context) {
+	const op = "handlers.GetSongText"
+
 	result, err := h.repo.GetSongText(c.Query("songId"))
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(404, gin.H{"Error": "Song doesnt exist"})
+			c.JSON(http.StatusNotFound, gin.H{"Error": "Song doesnt exist"})
 			return
 		}
-		c.JSON(400, gin.H{"Error": err.Error()})
+		logger.Logger.Info().Interface("Error occured: ", err.Error()).Msg(op)
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
 		return
 	}
 
-	parts := strings.Split(result, "\n\n")
-
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("limit", "2"))
-
-	startIndex := (page - 1) * pageSize
-	endIndex := startIndex + pageSize
-
-	if startIndex > len(parts) {
-		startIndex = len(parts)
-	}
-	if endIndex > len(parts) {
-		endIndex = len(parts)
+	page, err := strconv.Atoi(c.Query("page"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
+		return
 	}
 
-	paginatedParts := parts[startIndex:endIndex]
+	limit, err := strconv.Atoi(c.Query("limit"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
+		return
+	}
+
+	logger.Logger.Debug().Str("String from DB: ", result).Msg(op)
+
+	paginatedParts := paginates.SongTextPaginate(result, page, limit)
 
 	type Response struct {
 		Text []map[string]string `json:"song_text"`
@@ -115,7 +122,7 @@ func (h *SongHandler) GetSongText(c *gin.Context) {
 		})
 	}
 
-	c.JSON(200, response)
+	c.JSON(http.StatusOK, response)
 }
 
 // DeleteSong godoc
@@ -131,16 +138,19 @@ func (h *SongHandler) GetSongText(c *gin.Context) {
 // @Failure 404 {object} gin.H "Song doesn't exist"
 // @Router /delete-song [delete]
 func (h *SongHandler) DeleteSong(c *gin.Context) {
+	const op = "handlers.DeleteSong"
+
 	if err := h.repo.DeleteSong(c.Query("songId")); err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(404, gin.H{"Error": "Song doesnt exist"})
+			c.JSON(http.StatusNotFound, gin.H{"Error": "Song doesnt exist"})
 			return
 		}
-		c.JSON(400, gin.H{"Error": err.Error()})
+		logger.Logger.Info().Interface("Error occured: ", err.Error()).Msg(op)
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
 		return
 	}
 
-	c.JSON(200, gin.H{"OK": "Song deleted"})
+	c.JSON(http.StatusOK, gin.H{"OK": "Song deleted"})
 }
 
 // UpdateSong godoc
@@ -156,22 +166,27 @@ func (h *SongHandler) DeleteSong(c *gin.Context) {
 // @Failure 404 {object} gin.H "Song doesn't exist"
 // @Router /update-song [post]
 func (h *SongHandler) UpdateSong(c *gin.Context) {
+	const op = "handlers.UpdateSong"
+
 	var updatedSong models.Song
 	if err := c.BindJSON(&updatedSong); err != nil {
-		c.JSON(400, gin.H{"Error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
 		return
 	}
+
+	logger.Logger.Debug().Interface("Recieved updated song: ", updatedSong).Msg(op)
 
 	if err := h.repo.UpdateSong(updatedSong); err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(404, gin.H{"Error": "Song doesnt exist"})
+			c.JSON(http.StatusNotFound, gin.H{"Error": "Song doesnt exist"})
 			return
 		}
-		c.JSON(400, gin.H{"Error": err.Error()})
+		logger.Logger.Info().Interface("Error occured: ", err.Error()).Msg(op)
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
 		return
 	}
 
-	c.JSON(200, gin.H{"OK": "Song updated"})
+	c.JSON(http.StatusOK, gin.H{"OK": "Song updated"})
 }
 
 // AddSong godoc
@@ -186,9 +201,11 @@ func (h *SongHandler) UpdateSong(c *gin.Context) {
 // @Failure 400 {object} gin.H
 // @Router /add-song [post]
 func (h *SongHandler) AddSong(c *gin.Context) {
+	const op = "handlers.AddSong"
+
 	var newSong models.Song
 	if err := c.BindJSON(&newSong); err != nil {
-		c.JSON(400, gin.H{"Error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
 		return
 	}
 
@@ -201,13 +218,15 @@ func (h *SongHandler) AddSong(c *gin.Context) {
 
 	apiURL, err := url.Parse(baseURL)
 	if err != nil {
-		c.JSON(400, gin.H{"Error": err.Error()})
+		logger.Logger.Info().Interface("Error occured: ", err.Error()).Msg(op)
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
 		return
 	}
 	apiURL.RawQuery = params.Encode()
 
 	response, err := http.Get(apiURL.String())
 	if err != nil {
+		logger.Logger.Info().Interface("Error occured: ", err.Error()).Msg(op)
 		c.JSON(response.StatusCode, gin.H{"Error": err.Error()})
 		return
 	}
@@ -220,9 +239,12 @@ func (h *SongHandler) AddSong(c *gin.Context) {
 
 	var songDetail SongDetail
 	if err := json.NewDecoder(response.Body).Decode(&songDetail); err != nil {
-		c.JSON(400, gin.H{"Error": err.Error()})
+		logger.Logger.Info().Interface("Error occured: ", err.Error()).Msg(op)
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
 		return
 	}
+
+	logger.Logger.Debug().Interface("Song details from API", songDetail).Msg(op)
 
 	newSong.ReleaseDate = songDetail.ReleaseDate
 	newSong.Text = songDetail.Text
@@ -230,9 +252,10 @@ func (h *SongHandler) AddSong(c *gin.Context) {
 
 	id, err := h.repo.AddSong(newSong)
 	if err != nil {
-		c.JSON(400, gin.H{"Error": err.Error()})
+		logger.Logger.Info().Interface("Error occured: ", err.Error()).Msg(op)
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err.Error()})
 		return
 	}
 
-	c.JSON(200, gin.H{"OK": "Song created", "New song Id": id})
+	c.JSON(http.StatusOK, gin.H{"OK": "Song created", "New song Id": id})
 }

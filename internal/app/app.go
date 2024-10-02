@@ -15,11 +15,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const (
-	envLocal = "local"
-	envProd  = "prod"
-)
-
 type App struct {
 	Cfg      config.Config
 	Storage  *postgres.Database
@@ -61,6 +56,8 @@ func (app *App) SetConfig() {
 
 func (app *App) Run() {
 	const op = "app.Run"
+
+	logger.InitLogger(app.Cfg.Env)
 
 	logger.Logger.Info().Str("address:", app.Server.Addr).Msg("Server started")
 	if err := app.Server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

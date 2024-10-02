@@ -3,6 +3,8 @@ package repos
 import (
 	"strconv"
 	"test-case/internal/models"
+	"test-case/internal/utils/logger"
+	"test-case/internal/utils/paginates"
 
 	"gorm.io/gorm"
 )
@@ -21,26 +23,6 @@ type songRepo struct {
 
 func NewSongRepository(db *gorm.DB) SongRepository {
 	return &songRepo{database: db}
-}
-
-func paginate(page string, limit string) func(db *gorm.DB) *gorm.DB {
-	return func(db *gorm.DB) *gorm.DB {
-		page, _ := strconv.Atoi(page)
-		if page <= 0 {
-			page = 1
-		}
-
-		pageSize, _ := strconv.Atoi(limit)
-		switch {
-		case pageSize > 100:
-			pageSize = 100
-		case pageSize <= 0:
-			pageSize = 10
-		}
-
-		offset := (page - 1) * pageSize
-		return db.Offset(offset).Limit(pageSize)
-	}
 }
 
 func (r *songRepo) GetSongs(filterParams map[string]string, page string, limit string) ([]models.Song, error) {
@@ -65,8 +47,9 @@ func (r *songRepo) GetSongs(filterParams map[string]string, page string, limit s
 	}
 
 	var songs []models.Song
-	result := query.Order("id asc").Scopes(paginate(page, limit)).Find(&songs)
+	result := query.Order("id asc").Scopes(paginates.SongPaginate(page, limit)).Find(&songs)
 	if result.Error != nil {
+		logger.Logger.Info().Interface("Error occured: ", result.Error).Msg(op)
 		return nil, result.Error
 	}
 
@@ -78,6 +61,7 @@ func (r *songRepo) GetSongText(id string) (string, error) {
 
 	songId, err := strconv.Atoi(id)
 	if err != nil {
+		logger.Logger.Info().Interface("Error occured: ", err).Msg(op)
 		return "", err
 	}
 
@@ -85,6 +69,7 @@ func (r *songRepo) GetSongText(id string) (string, error) {
 	result := r.database.Model(&models.Song{}).
 		Select("text").Where("id = ?", songId).Scan(&text)
 	if result.Error != nil {
+		logger.Logger.Info().Interface("Error occured: ", result.Error).Msg(op)
 		return "", result.Error
 	}
 
@@ -96,6 +81,7 @@ func (r *songRepo) DeleteSong(id string) error {
 
 	songId, err := strconv.Atoi(id)
 	if err != nil {
+		logger.Logger.Info().Interface("Error occured: ", err).Msg(op)
 		return err
 	}
 
@@ -105,6 +91,7 @@ func (r *songRepo) DeleteSong(id string) error {
 	}
 
 	if result.Error != nil {
+		logger.Logger.Info().Interface("Error occured: ", result.Error).Msg(op)
 		return result.Error
 	}
 
@@ -117,6 +104,7 @@ func (r *songRepo) UpdateSong(updatedSong models.Song) error {
 	var oldSong models.Song
 	result := r.database.Where("id = ?", updatedSong.Id).First(&oldSong)
 	if result.Error != nil {
+		logger.Logger.Info().Interface("Error occured: ", result.Error).Msg(op)
 		return result.Error
 	}
 
@@ -126,7 +114,11 @@ func (r *songRepo) UpdateSong(updatedSong models.Song) error {
 	oldSong.ReleaseDate = updatedSong.ReleaseDate
 	oldSong.Link = updatedSong.Link
 
-	r.database.Save(&oldSong)
+	if result := r.database.Save(&oldSong); result.Error != nil {
+		logger.Logger.Info().Interface("Error occured: ", result.Error).Msg(op)
+		return result.Error
+	}
+
 	return nil
 }
 
@@ -141,6 +133,7 @@ func (r *songRepo) AddSong(newSong models.Song) (uint, error) {
 
 	result := r.database.Create(&newSong)
 	if result.Error != nil {
+		logger.Logger.Info().Interface("Error occured: ", result.Error).Msg(op)
 		return 0, result.Error
 	}
 
