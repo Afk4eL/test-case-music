@@ -1,6 +1,7 @@
 package repos
 
 import (
+	"errors"
 	"strconv"
 	"test-case/internal/models"
 	"test-case/internal/utils/logger"
@@ -125,13 +126,32 @@ func (r *songRepo) UpdateSong(updatedSong models.Song) error {
 func (r *songRepo) AddSong(newSong models.Song) (uint, error) {
 	const op = "storage.repos.AddSong"
 
+	var group models.Group
+	result := r.database.Where("name = ?", newSong.Band).First(&group)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			logger.Logger.Info().Str("Group not found", "Creating...").Msg(op)
+
+			group = models.Group{Name: newSong.Band}
+			result := r.database.Create(&group)
+			if result.Error != nil {
+				logger.Logger.Error().Interface("Error: ", result.Error).Msg(op)
+				return 0, result.Error
+			}
+		} else {
+			logger.Logger.Error().Interface("Error: ", result.Error).Msg(op)
+			return 0, result.Error
+		}
+	}
+
 	var maxId uint
 	r.database.Model(&models.Song{}).
 		Select("MAX(id)").Scan(&maxId)
 
 	newSong.Id = maxId + 1
+	newSong.GroupId = group.Id
 
-	result := r.database.Create(&newSong)
+	result = r.database.Create(&newSong)
 	if result.Error != nil {
 		logger.Logger.Info().Interface("Error occured: ", result.Error).Msg(op)
 		return 0, result.Error

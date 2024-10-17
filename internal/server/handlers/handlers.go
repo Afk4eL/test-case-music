@@ -213,7 +213,7 @@ func (h *SongHandler) AddSong(c *gin.Context) {
 	baseURL, _ = url.JoinPath(baseURL, "/info")
 
 	params := url.Values{}
-	params.Add("group", newSong.Group)
+	params.Add("group", newSong.Band)
 	params.Add("song", newSong.Song)
 
 	apiURL, err := url.Parse(baseURL)

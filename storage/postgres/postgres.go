@@ -36,7 +36,7 @@ func New(config config.Config) (*Database, error) {
 		db = db.Debug()
 	}
 
-	if err := db.AutoMigrate(&models.Song{}); err != nil {
+	if err := db.AutoMigrate(&models.Group{}, &models.Song{}); err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
